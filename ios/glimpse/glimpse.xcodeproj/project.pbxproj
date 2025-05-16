@@ -30,7 +30,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		3898007B2DC035A600B06B5F /* Exceptions for "glimpse" folder in "glimpse" target */ = {
+		38AAA0B62DD700450052D483 /* Exceptions for "glimpse" folder in "glimpse" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
@@ -43,7 +43,7 @@
 		3898003F2DC0062000B06B5F /* glimpse */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				3898007B2DC035A600B06B5F /* Exceptions for "glimpse" folder in "glimpse" target */,
+				38AAA0B62DD700450052D483 /* Exceptions for "glimpse" folder in "glimpse" target */,
 			);
 			path = glimpse;
 			sourceTree = "<group>";
@@ -188,6 +188,7 @@
 				TargetAttributes = {
 					3898003C2DC0062000B06B5F = {
 						CreatedOnToolsVersion = 16.3;
+						LastSwiftMigration = 1630;
 					};
 					389800492DC0062100B06B5F = {
 						CreatedOnToolsVersion = 16.3;
@@ -208,6 +209,8 @@
 			);
 			mainGroup = 389800342DC0061F00B06B5F;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3898003E2DC0062000B06B5F /* Products */;
 			projectDirPath = "";
@@ -408,6 +411,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JMAR5HMU3D;
@@ -428,6 +432,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "Evan-Robert.glimpse";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -438,6 +443,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = JMAR5HMU3D;
