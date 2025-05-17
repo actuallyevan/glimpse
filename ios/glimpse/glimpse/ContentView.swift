@@ -12,16 +12,16 @@ struct ContentView: View {
     
     var body: some View {
         VStack {
-            Text("BLE State: \(ble.BLEstate)")
+            Text("BLE State: \(ble.bleStatusString)")
                 .font(.headline)
                 .padding(20)
-            if ble.BLEstate == "connected" {
+            if ble.bleState == .connected {
                 Text("Connected")
-            } else if (ble.BLEstate == "scanning") {
+            } else if (ble.bleState == .scanning) {
                 Text("Scanning for devices...")
             } else {
                 Button("Connect") {
-                    ble.initialConnection()
+                    // ble.initialConnection()
                 }
             }
             Button("Send Message") {

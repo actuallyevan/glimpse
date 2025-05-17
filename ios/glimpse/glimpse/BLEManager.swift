@@ -1,33 +1,57 @@
 import Foundation
 import CoreBluetooth
 import SwiftUI
-import AVFoundation
 import OSLog
 
-// Helper extension for Data (if you don't have one)
-extension Data {
-    func hexEncodedString() -> String {
-        return map { String(format: "%02hhx", $0) }.joined()
+private var logEnabled = true
+
+extension Logger {
+    
+    private static let _logger: Logger = .init(subsystem: Bundle.main.bundleIdentifier!, category: "glimpse")
+    static var logger: Logger? {
+        guard logEnabled else { return nil }
+        return _logger
     }
 }
 
-class AtomicBool {
-    private var val: Bool
-    private let queue = DispatchQueue(label: "com.yourapp.atomicBoolQueue")
-    init(_ initialValue: Bool) { self.val = initialValue }
-    func load() -> Bool { queue.sync { self.val } }
-    func store(_ newValue: Bool) { queue.async(flags: .barrier) { self.val = newValue } }
+enum BLEState: CustomStringConvertible, Equatable {
+    case idle
+    case scanning
+    case connecting
+    case connected
+    case disconnected
+    
+    var description: String {
+        switch self {
+        case .idle: return "Idle"
+        case .scanning: return "Scanning"
+        case .connecting: return "Connecting"
+        case .connected: return "Connected"
+        case .disconnected: return "Disconnected"
+        }
+    }
 }
+    
 
 class BLEManager : NSObject, ObservableObject, CBCentralManagerDelegate {
     
-    @Published public var BLEstate = "disconnected"
+    @Published var bleState: BLEState = .disconnected {
+        didSet {
+            if oldValue != bleState {
+                Logger.logger?.log("BLE state changed from \(oldValue.description) to: \(self.bleState.description)")
+                self.bleStatusString = self.bleState.description
+            }
+        }
+    }
+    
+    @Published var bleStatusString: String = BLEState.disconnected.description
+    
+    // @Published public var BLEstate = "disconnected"
     @Published public var receivedMessage = ""
     
     @Published public var receivedImage: UIImage?
     
     private var api = APIHandler()
-    private var audioPlayer: AVAudioPlayer?
     
     private var central: CBCentralManager!
     private var peripheral: CBPeripheral?
@@ -37,10 +61,10 @@ class BLEManager : NSObject, ObservableObject, CBCentralManagerDelegate {
     private var outputStream: OutputStream?
     private var canWrite = false
     
-    private let targetService = CBUUID(string: "dcbc7255-1e9e-49a0-a360-b0430b6c6905")
+    private let targetServiceUUID = CBUUID(string: "dcbc7255-1e9e-49a0-a360-b0430b6c6905")
     private let psm: CBL2CAPPSM = 150
     
-    private let doorBellUUID = CBUUID(string: "371a55c8-f251-4ad2-90b3-c7c195b049be")
+    private let keepAliveUUID = CBUUID(string: "371a55c8-f251-4ad2-90b3-c7c195b049be")
     
     private let autoReconnectOptions: [String: Any] = [
         CBConnectPeripheralOptionEnableAutoReconnect: true,
@@ -57,7 +81,8 @@ class BLEManager : NSObject, ObservableObject, CBCentralManagerDelegate {
     
     private var audioSendCompletionHandler: ((Bool) -> Void)?
     
-    let logger = Logger(subsystem: "com.glimpseApp", category: "BLE")
+    private var restoredPeripheral: CBPeripheral?
+    private var wasRestored = false
     
     override init() {
         super.init()
@@ -67,116 +92,257 @@ class BLEManager : NSObject, ObservableObject, CBCentralManagerDelegate {
             options: [CBCentralManagerOptionRestoreIdentifierKey: "com.glimpseApp.central", CBConnectPeripheralOptionNotifyOnConnectionKey: true]
         )
     }
-    
-    // automatically reconnect to saved peripheral on startup
+
     func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        
-        BLEstate = (central.state == .poweredOn) ? "ready" : "disconnected"
-        
-        guard central.state == .poweredOn else { return }
-        
-        // only connect if we are disconnected
-        guard central.retrieveConnectedPeripherals(withServices: [targetService]).isEmpty else { return }
-        
-        // check if we have a saved peripheral and connect
-        if let uuidString = UserDefaults.standard.string(forKey: "lastPeripheralUUID"),
-        let uuid = UUID(uuidString: uuidString) {
-            let known = central.retrievePeripherals(withIdentifiers: [uuid])
-            if let saved = known.first {
-                
-                self.peripheral = saved
-                saved.delegate = self
-                
-                central.connect(saved, options: autoReconnectOptions)
-                print("Reconnecting to saved peripheral")
-                return
+        switch central.state {
+        case .poweredOn:
+            self.bleState = .idle
+            Logger.logger?.log("Bluetooth is powered on")
+            
+            if wasRestored {
+                reconnectOnRestore()    // not sure if this will be used
+            } else {
+                reconnectToSavedPeripheral()
             }
+            
+        case .poweredOff:
+            self.bleState = .disconnected
+            self.peripheral = nil
+            self.restoredPeripheral = nil
+            wasRestored = false
+            Logger.logger?.log("Bluetooth is powered off")
+        default:
+            self.bleState = .disconnected
+            self.peripheral = nil
+            self.restoredPeripheral = nil
+            wasRestored = false
+            Logger.logger?.log("Bluetooth unknown state")
         }
     }
     
-    // initial connection (only when no peripheral is saved/connected)
-    func initialConnection() {
+    private func reconnectToSavedPeripheral() {
         
-        guard central.state == .poweredOn else { return }
+        guard let uuidString = UserDefaults.standard.string(forKey: "lastPeripheralUUID"),
+              let savedPeripheralUUID = UUID(uuidString: uuidString) else {
+            Logger.logger?.log("No saved peripheral UUID found")
+            return
+        }
         
-        self.BLEstate = "scanning"
-        central.scanForPeripherals(withServices: [targetService], options: nil)
+        // If we are already connected to the saved peripheral, do nothing
+        let connectedPeripheralsWithService = central.retrieveConnectedPeripherals(withServices: [targetServiceUUID])
+        if let alreadyConnectedSavedPeripheral = connectedPeripheralsWithService.first(where: { $0.identifier == savedPeripheralUUID }) {
+            Logger.logger?.log("Already connected to saved peripheral")
+            
+            // Assign the already connected peripheral as our peripheral (as a safe measure))
+            if self.peripheral?.identifier != alreadyConnectedSavedPeripheral.identifier {
+                self.peripheral = alreadyConnectedSavedPeripheral
+                self.peripheral?.delegate = self
+            }
+            return
+        }
+        
+        // Ensure we are trying to connect to a disconnected (but saved) peripheral
+        guard let peripheralToConnect = central.retrievePeripherals(withIdentifiers: [savedPeripheralUUID]).first else {
+            return
+        }
+        
+        self.peripheral = peripheralToConnect
+        peripheralToConnect.delegate = self
+        
+        Logger.logger?.log("Attempting to connect to saved peripheral")
+        central.connect(peripheralToConnect, options: autoReconnectOptions)
+    }
+    
+    // this is linked to the callback that I don't know when is called
+    private func reconnectOnRestore() {
+        Logger.logger?.log("Attempting to reconnect on restore")
+        
+        if let restoredP = self.restoredPeripheral {
+            self.peripheral = self.restoredPeripheral
+            if restoredP.state == .connected  {
+                Logger.logger?.log("Restored peripheral is already connected")
+                self.bleState = .connected
+                self.centralManager(central, didConnect: restoredP)
+            } else if restoredP.state == .connecting {
+                Logger.logger?.log("Restored peripheral is already connecting")
+                self.bleState = .connecting
+            } else {
+                Logger.logger?.log("Restored peripheral is not connected")
+                self.bleState = .connecting
+                self.central.connect(restoredP, options: autoReconnectOptions)
+            }
+        } else {
+            Logger.logger?.log("No restored peripheral found")
+            self.bleState = .disconnected
+            reconnectToSavedPeripheral() // fallback to saved peripheral
+        }
+        self.wasRestored = false
+        self.restoredPeripheral = nil
+    }
+    
+    // Manual connection attempt, only possible if disconnected
+    func manuallyConnect() {
+        
+        guard central.state == .poweredOn, self.bleState == .disconnected else { return }
+        
+        guard !central.isScanning else {
+            Logger.logger?.log("Already scanning for peripherals")
+            return
+        }
+        
+        if let p = self.peripheral, (p.state == .connected || p.state == .connecting) {
+            Logger.logger?.log("Already connected/connecting to peripheral")
+            return
+        }
+        
+        self.bleState = .scanning
+        Logger.logger?.log("Scanning for peripherals")
+            
+        central.scanForPeripherals(withServices: [targetServiceUUID], options: nil)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
-            guard let self = self, self.central.isScanning else { return }
-            
+            guard let self = self else { return }
             self.central.stopScan()
-            self.BLEstate = "disconnected"
-            print("Scan timed out")
+            self.bleState = .disconnected
+            Logger.logger?.log("Scanning timed out")
         }
     }
     
-    // connect to discovered peripherals
+    // ONLY called after .scanForPeripherals
     func centralManager(_ central: CBCentralManager, didDiscover peripheral: CBPeripheral, advertisementData: [String : Any], rssi RSSI: NSNumber) {
-        guard central.state == .poweredOn else { return }
+        Logger.logger?.log("Discovered peripheral: \(peripheral.name ?? "unknown")")
+        
         central.stopScan()
-        self.BLEstate = "connecting"
+        
         self.peripheral = peripheral
         peripheral.delegate = self
+        
+        Logger.logger?.log("Connecting to peripheral: \(peripheral.name ?? "unknown")")
+        self.bleState = .connecting
         central.connect(peripheral, options: autoReconnectOptions)
-    }
-    
-    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
-        if let error = error {
-            logger.error("Error discovering services: \(error.localizedDescription)")
-            // Handle error, e.g., disconnect or retry
-            return
-        }
-
-        guard let services = peripheral.services else {
-            logger.log("No services found on peripheral.")
-            return
-        }
-
-        logger.log("Discovered services: \(services.map { $0.uuid })")
-
-        for service in services {
-            if service.uuid == targetService {
-                logger.log("Found target service: \(service.uuid). Discovering characteristics for it...")
-                // Discover only the specific characteristic (doorBellUUID) for this service
-                peripheral.discoverCharacteristics([doorBellUUID], for: service)
-                return // Exit after finding and processing the target service
-            }
-        }
-        logger.log("Target service (\(self.targetService.uuidString)) not found among discovered services.")
     }
     
     // open l2cap when connected
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
-        print("Connected to \(peripheral.name ?? "unknown device")")
+        
+        // we update state after open the L2CAP streams, not here
+        
         UserDefaults.standard.set(peripheral.identifier.uuidString, forKey: "lastPeripheralUUID")
-        peripheral.discoverServices([targetService])
+        peripheral.discoverServices([targetServiceUUID])
         peripheral.openL2CAPChannel(psm)
-        logger.log("connected")
+        Logger.logger?.log("Connected to peripheral: \(peripheral.name ?? "unknown")")
     }
     
-    // reconnect on restart
-    func centralManager(_ central: CBCentralManager, willRestoreState dict: [String : Any]) {
+    // called after .didConnect
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverServices error: Error?) {
         
-        guard central.state == .poweredOn else { return }
-        
-        if let peripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral] {
-            peripherals.forEach { peripheral in
-                central.connect(peripheral, options: autoReconnectOptions)
+        if let error = error {
+            Logger.logger?.error("Error discovering services: \(error.localizedDescription)")
+            return
+        }
+
+        guard let services = peripheral.services else {
+            Logger.logger?.log("No services found on peripheral.")
+            return
+        }
+
+        Logger.logger?.log("Discovered services: \(services.map { $0.uuid })")
+
+        for service in services {
+            if service.uuid == targetServiceUUID {
+                Logger.logger?.log("Found target service: \(service.uuid), discovering characteristics")
+                peripheral.discoverCharacteristics([keepAliveUUID], for: service)
+                return
+            }
+        }
+        Logger.logger?.log("Target service (\(self.targetServiceUUID.uuidString)) not found among discovered services")
+    }
+    
+    // called after .discoverCharacteristics
+    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
+
+        if let error = error {
+            Logger.logger?.error("Error discovering characteristics for service \(service.uuid): \(error.localizedDescription)")
+            return
+        }
+
+        guard let characteristics = service.characteristics else {
+            Logger.logger?.log("No characteristics found for service \(service.uuid).")
+            return
+        }
+
+        Logger.logger?.log("Discovered characteristics for service \(service.uuid): \(characteristics.map { $0.uuid })")
+
+        for characteristic in characteristics {
+            Logger.logger?.log("Checking characteristic: \(characteristic.uuid)")
+            if characteristic.uuid == self.keepAliveUUID {
+                Logger.logger?.log("Found keepAlive characteristic: \(characteristic.uuid)")
+                if characteristic.properties.contains(.notify) {
+                    Logger.logger?.log("Doorbell characteristic supports notify, subscribing")
+                    peripheral.setNotifyValue(true, for: characteristic)
+                }
             }
         }
     }
     
-    // handle disconnect
+    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            Logger.logger?.error("Error changing notification state for \(characteristic.uuid): \(error.localizedDescription)")
+            return
+        }
+
+        if characteristic.isNotifying {
+            Logger.logger?.log("Successfully subscribed to notifications for characteristic: \(characteristic.uuid)")
+        } else {
+            Logger.logger?.log("Successfully unsubscribed from notifications for characteristic: \(characteristic.uuid) (or subscription failed)")
+        }
+    }
+
+    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
+        if let error = error {
+            Logger.logger?.error("Error updating value for characteristic \(characteristic.uuid): \(error.localizedDescription)")
+            return
+        }
+    }
+    
+    // not even sure when this is called or if its needed, but theoretically it should work
+    func centralManager(_ central: CBCentralManager, willRestoreState dict: [String : Any]) {
+        Logger.logger?.log("Restoring state (willRestoreState)")
+        wasRestored = true
+
+        if let restoredPeripherals = dict[CBCentralManagerRestoredStatePeripheralsKey] as? [CBPeripheral],
+           let uuidString = UserDefaults.standard.string(forKey: "lastPeripheralUUID"),
+           let savedPeripheralUUID = UUID(uuidString: uuidString) {
+
+            if let restoredP = restoredPeripherals.first(where: { $0.identifier == savedPeripheralUUID }) {
+                Logger.logger?.log("Found our saved peripheral in restored list: \(restoredP.name ?? uuidString)")
+                restoredP.delegate = self
+                self.restoredPeripheral = restoredP
+                // we then thereotically go to .didUpdateState
+            } else {
+                 Logger.logger?.log("Saved peripheral (UUID: \(uuidString)) not found among restored peripherals.")
+            }
+        } else {
+            Logger.logger?.log("No peripherals to restore from dictionary, or no saved UUID to match.")
+        }
+    }
+    
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, timestamp: CFAbsoluteTime, isReconnecting: Bool, error: (any Error)?) {
         
         if isReconnecting {
             print("Disconnected, reconnecting")
         } else {
-            print("Disconnected")
-            cleanupStreams()
-            BLEstate = "disconnected"
+            Logger.logger?.log("Disconnected from peripheral: \(peripheral.name ?? "unknown")")
+            self.bleState = .disconnected
+            self.cleanupStreams()
         }
+    }
+    
+    func centralManager(_ central: CBCentralManager, didFailToConnect peripheral: CBPeripheral, error: Error?) {
+        Logger.logger?.error("Failed to connect to peripheral: \(peripheral.name ?? "unknown"), error: \(error?.localizedDescription ?? "Unknown error")")
+        self.bleState = .disconnected
+        self.peripheral = nil
+        self.cleanupStreams()
     }
 }
 
@@ -186,76 +352,7 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
     func peripheral(_ peripheral: CBPeripheral, didOpen channel: CBL2CAPChannel?, error: Error?) {
         self.l2capChannel = channel
         setupStreams(for: channel!)
-        BLEstate = "connected"
-    }
-    
-    func peripheral(_ peripheral: CBPeripheral, didDiscoverCharacteristicsFor service: CBService, error: Error?) {
-        logger.log("Peripheral:didDiscoverCharacteristicsFor service: \(service.uuid) called.") // Add this line
-
-        if let error = error {
-            logger.error("Error discovering characteristics for service \(service.uuid): \(error.localizedDescription)")
-            return
-        }
-
-        guard let characteristics = service.characteristics else {
-            logger.log("No characteristics found for service \(service.uuid).")
-            return
-        }
-
-        logger.log("Discovered characteristics for service \(service.uuid): \(characteristics.map { $0.uuid })")
-
-        for characteristic in characteristics {
-            logger.log("Checking characteristic: \(characteristic.uuid)")
-            if characteristic.uuid == self.doorBellUUID {
-                logger.log("Found Doorbell characteristic: \(characteristic.uuid)")
-                if characteristic.properties.contains(.notify) {
-                    logger.log("Doorbell characteristic supports notify. Subscribing...")
-                    peripheral.setNotifyValue(true, for: characteristic)
-                } else {
-                    logger.log("Doorbell characteristic does NOT support notify property.")
-                }
-                // If you intend to read its initial value (which is L2CAP_CHANNEL in your ESP32 code)
-                if characteristic.properties.contains(.read) {
-                    // logger.log("Doorbell characteristic supports read. Reading initial value...")
-                    // peripheral.readValue(for: characteristic)
-                }
-                // No need to continue loop if specific characteristic found
-                // break
-            }
-        }
-    }
-    
-    func peripheral(_ peripheral: CBPeripheral, didUpdateNotificationStateFor characteristic: CBCharacteristic, error: Error?) {
-        if let error = error {
-            logger.error("Error changing notification state for \(characteristic.uuid): \(error.localizedDescription)")
-            return
-        }
-
-        if characteristic.isNotifying {
-            logger.log("Successfully subscribed to notifications for characteristic: \(characteristic.uuid)")
-        } else {
-            logger.log("Successfully unsubscribed from notifications for characteristic: \(characteristic.uuid) (or subscription failed)")
-        }
-    }
-
-    func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
-        if let error = error {
-            logger.error("Error updating value for characteristic \(characteristic.uuid): \(error.localizedDescription)")
-            return
-        }
-
-        guard let data = characteristic.value else {
-            logger.log("Characteristic \(characteristic.uuid) value is nil.")
-            return
-        }
-
-        if characteristic.uuid == doorBellUUID {
-            logger.log("Received notification from Doorbell characteristic (UUID: \(characteristic.uuid)): \(data.hexEncodedString())")
-            // Process the doorbell notification data here.
-            // The ESP32 sends a single byte token.
-        } else {
-            logger.log("Received data from unexpected characteristic \(characteristic.uuid): \(data.hexEncodedString())")
-        }
+        self.bleState = .connected
     }
             
     
@@ -266,7 +363,7 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
         inputStream = inSt
         outputStream = outSt
         
-        logger.log("streams created")
+        Logger.logger?.log("streams created")
         
         inputStream?.setProperty(StreamNetworkServiceTypeValue.voice, forKey: .networkServiceType)
         outputStream?.setProperty(StreamNetworkServiceTypeValue.voice, forKey: .networkServiceType)
@@ -284,7 +381,7 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
     // cleanup l2cap streams
     func cleanupStreams() {
         
-        logger.log("streams closed")
+        Logger.logger?.log("streams closed")
         
         inputStream?.close()
         inputStream?.remove(from: .main, forMode: .default)
@@ -301,7 +398,7 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
     func stream(_ aStream: Stream, handle event: Stream.Event) {
         switch event {
         case .openCompleted:
-            self.BLEstate = "connected"
+            // self.BLEstate = "connected"
             if inputStream == aStream as? InputStream {
                 print("Input stream opened")
             } else {
@@ -310,7 +407,7 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
         
         case .hasBytesAvailable:
             
-            // logger.log("bytes read")
+            // Logger.logger?.log("bytes read")
             
             
             if let inputStream = aStream as? InputStream {
@@ -328,12 +425,12 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
                 var chunk = [UInt8](repeating: 0, count: 1024)
                 let read = inputStream.read(&chunk, maxLength: chunk.count)
                 if read > 0 {
-                    logger.log("chunk read")
+                    Logger.logger?.log("chunk read")
                     buffer.append(chunk, count: read)
                     print("Received \(buffer.count) / \(expectedLength!) bytes")
                     
                     if let expected = expectedLength, buffer.count >= expected {
-                        logger.log("expected bytes received")
+                        Logger.logger?.log("expected bytes received")
                         self.bgID = UIApplication.shared.beginBackgroundTask(withName: "apiCall") { [weak self] in
                             guard let self = self else { return }
                             UIApplication.shared.endBackgroundTask(self.bgID)
@@ -341,7 +438,7 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
                         
                         // UIApplication.shared.endBackgroundTask(bgID)
                         
-                        // logger.log("Background time remaining: \(UIApplication.shared.backgroundTimeRemaining) seconds")
+                        // Logger.logger?.log("Background time remaining: \(UIApplication.shared.backgroundTimeRemaining) seconds")
                         
                         // defer { UIApplication.shared.endBackgroundTask(self.bgID) }
                         
@@ -351,9 +448,9 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
                                 // print image width and height in pixels
                                 print("Image size: \(img.size.width) x \(img.size.height)")
                                 guard let imgBase64 = self.receivedImage?.convertToBase64() else { return }
-                                self.logger.log("base64 generated")
+                                Logger.logger?.log("base64 generated")
                                 self.api.base64ImageString = imgBase64
-                                self.logger.log("Background time remaining: \(UIApplication.shared.backgroundTimeRemaining) seconds")
+                                Logger.logger?.log("Background time remaining: \(UIApplication.shared.backgroundTimeRemaining) seconds")
                                 self.api.generateAudioDescription { [weak self] (receivedAudioData) in
                                     guard let self = self else { return }
                                     
@@ -361,9 +458,8 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
 
                                     if let audioData = receivedAudioData { // Or your test Data(count: 750000)
                                         print("Received audio data of length: \(audioData.count)")
-                                        // self.playAudio(data: audioData)
-                                        self.sendAudioData(audioData: Data(count: 750000)) { success in // Use your test data
-                                            self.logger.log("Audio send completed. Success: \(success). Ending background task.")
+                                        self.sendAudioData(audioData: audioData) { success in // Use your test data
+                                            Logger.logger?.log("Audio send completed. Success: \(success). Ending background task.")
                                             UIApplication.shared.endBackgroundTask(taskID) // Use captured taskID
                                             if taskID == self.bgID { // defensive check if bgID was reassigned
                                                self.bgID = .invalid
@@ -398,10 +494,10 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
             
         case .errorOccurred:
             print("Stream error:", aStream.streamError ?? "Unknown")
-            self.BLEstate = "disconnected"
+            // self.BLEstate = "disconnected"
             
         case .endEncountered:
-            self.BLEstate = "disconnected"
+            // self.BLEstate = "disconnected"
             cleanupStreams()
             
         default:
@@ -419,33 +515,9 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
         }
     }
     
-    func playAudio(data: Data) {
-        do {
-            // Configure the audio session for playback
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try AVAudioSession.sharedInstance().setActive(true)
-
-            // Initialize the audio player with the MP3 data
-            // The fileTypeHint helps AVAudioPlayer correctly interpret the data.
-            // For MP3, AVFileType.mp3.rawValue is appropriate.
-            self.audioPlayer = try AVAudioPlayer(data: data, fileTypeHint: AVFileType.mp3.rawValue)
-
-            // Optional: self.audioPlayer?.delegate = self (if you need to handle playback finishing, etc.)
-            // Optional: self.audioPlayer?.prepareToPlay() // Prepares the audio player for playback, reducing latency.
-
-            self.audioPlayer?.play()
-            print("Audio playback started.")
-
-        } catch {
-            print("Error initializing or playing audio: \(error.localizedDescription)")
-        }
-    }
-    
-    
-    
     func sendAudioData(audioData: Data, completion: @escaping (Bool) -> Void) {
         guard self.outputStream != nil else {
-            logger.error("Output stream is not available to send audio data.")
+            Logger.logger?.error("Output stream is not available to send audio data.")
             completion(false) // Signal failure
             return
         }
@@ -471,10 +543,10 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
         } else if self.dataToSend != nil && !self.dataToSend!.isEmpty {
             // If canWrite is false but we have data, we're waiting for .hasSpaceAvailable.
             // The completion will be called from sendPendingData when it's done or errors.
-            logger.log("sendAudioData: canWrite is false, data is queued. Waiting for .hasSpaceAvailable.")
+            Logger.logger?.log("sendAudioData: canWrite is false, data is queued. Waiting for .hasSpaceAvailable.")
         } else {
             // Should not happen if dataToSend was just set, but good for safety
-            logger.error("sendAudioData: No data to send or canWrite is false unexpectedly.")
+            Logger.logger?.error("sendAudioData: No data to send or canWrite is false unexpectedly.")
             completion(false)
         }
     }
@@ -530,7 +602,7 @@ extension BLEManager : CBPeripheralDelegate, StreamDelegate {
             }
         }
         if self.sendOffset < currentData.count && self.dataToSend != nil {
-             logger.log("sendPendingData: Exited loop, canWrite likely false. \(currentData.count - self.sendOffset) bytes remaining.")
+             Logger.logger?.log("sendPendingData: Exited loop, canWrite likely false. \(currentData.count - self.sendOffset) bytes remaining.")
         } else if self.dataToSend == nil && self.audioSendCompletionHandler != nil {
             // This case implies all data was sent and completion was already called.
             // Or dataToSend became nil due to an error and completion was called.
