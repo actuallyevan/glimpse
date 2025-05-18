@@ -69,7 +69,7 @@ class APIHandler {
         string: "https://api.openai.com/v1/audio/speech"
     )!
 
-    func processImageToSpeech(
+    func getSpeechFromImage(
         base64ImageString: String,
         completion: @escaping (Data?) -> Void
     ) {
@@ -84,7 +84,7 @@ class APIHandler {
                 completion(nil)
                 return
             }
-            fetchSpeechAudio(for: text, completion: completion)
+            fetchSpeechFromText(for: text, completion: completion)
         }
     }
 
@@ -170,7 +170,7 @@ class APIHandler {
         task.resume()
     }
 
-    private func fetchSpeechAudio(
+    private func fetchSpeechFromText(
         for text: String,
         completion: @escaping (Data?) -> Void
     ) {
@@ -206,8 +206,8 @@ class APIHandler {
                 completion(nil)
                 return
             }
-            Logger.logger?.log("Successfully fetched audio")
-            completion(audioData)  // might want to wrap in async
+            Logger.logger?.log("Successfully fetched speech audio data")
+            completion(audioData)
         }
         task.resume()
     }

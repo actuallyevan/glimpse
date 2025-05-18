@@ -157,7 +157,7 @@ extension BLEHandler: StreamDelegate {
         )
         Logger.logger?.log("Image converted to base64, calling api")
 
-        api.processImageToSpeech(base64ImageString: imgBase64) {
+        api.getSpeechFromImage(base64ImageString: imgBase64) {
             [weak self] receivedAudioData in
             guard let self = self else { return }
 
