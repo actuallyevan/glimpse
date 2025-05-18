@@ -1,4 +1,11 @@
-We must modify some nimBLE arduino settings to get BLE working properly.
+This project allows an iPhone to communicate with an Seeed Studio XIAO ESP32S3 Sense over BLE to enable the ESP32S3 to play an audio description of images it captures.
+
+### Latency Considerations
+ - ESP camera image resolution
+ - Prompts for both API calls on iPhone
+
+
+### BLE Settings
 
 #### Increase retries + add short delay between sends
 

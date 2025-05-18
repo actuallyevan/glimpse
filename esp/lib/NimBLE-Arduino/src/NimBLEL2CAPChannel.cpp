@@ -180,7 +180,9 @@ bool NimBLEL2CAPChannel::write(const std::vector<uint8_t>& bytes) {
 
     auto start = bytes.begin();
     while (start != bytes.end()) {
+        // delay added for iOS
         vTaskDelay(20);
+        //
         auto end = start + mtu < bytes.end() ? start + mtu : bytes.end();
         if (writeFragment(start, end) < 0) {
             return false;
