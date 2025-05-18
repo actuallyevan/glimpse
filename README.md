@@ -1,4 +1,4 @@
-This project allows an iPhone to communicate with an Seeed Studio XIAO ESP32S3 Sense over BLE to enable the ESP32S3 to play an audio description of images it captures.
+This project allows an iPhone to communicate with a Seeed Studio XIAO ESP32S3 Sense over BLE to enable the ESP32S3 to play an audio description of images it captures.
 
 ### General Considerations
  - ESP camera image resolution
