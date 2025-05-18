@@ -27,7 +27,7 @@ struct ContentView: View {
     private var statusButtonText: String {
         switch ble.bleState {
         case .connected: return "Disconnect"
-        case .connecting: return "Connecting..."
+        case .connecting: return "Connecting... (Tap to disconnect)"
         case .disconnected: return "Connect"
         case .idle: return "Waiting..."
         case .scanning: return "Scanning..."
@@ -37,7 +37,7 @@ struct ContentView: View {
     private var statusButtonAction: () -> Void {
         switch ble.bleState {
         case .connected: return ble.manuallyDisconnect
-        case .connecting: return {}
+        case .connecting: return ble.manuallyDisconnect
         case .disconnected: return ble.manuallyConnect
         case .idle: return {}
         case .scanning: return {}

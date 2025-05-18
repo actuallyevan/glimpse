@@ -44,6 +44,8 @@ class BLEHandler : NSObject, ObservableObject, CBCentralManagerDelegate, CBPerip
     private var restoredPeripheral: CBPeripheral?
     private var wasRestored = false
     
+    private var manualDisconnect = false
+    
     private let targetServiceUUID = CBUUID(string: "dcbc7255-1e9e-49a0-a360-b0430b6c6905")
     private let keepAliveUUID = CBUUID(string: "371a55c8-f251-4ad2-90b3-c7c195b049be")
     
@@ -69,7 +71,7 @@ class BLEHandler : NSObject, ObservableObject, CBCentralManagerDelegate, CBPerip
         central = CBCentralManager(
             delegate: self,
             queue: .main,
-            options: [CBCentralManagerOptionRestoreIdentifierKey: "com.glimpseApp.central", CBConnectPeripheralOptionNotifyOnConnectionKey: true]
+            options: [CBCentralManagerOptionRestoreIdentifierKey: "com.glimpseApp.central"]
         )
     }
 
@@ -132,6 +134,7 @@ class BLEHandler : NSObject, ObservableObject, CBCentralManagerDelegate, CBPerip
         peripheralToConnect.delegate = self
         
         Logger.logger?.log("Attempting to connect to saved peripheral")
+        bleState = .connecting
         central.connect(peripheralToConnect, options: autoReconnectOptions)
     }
     
@@ -202,15 +205,14 @@ class BLEHandler : NSObject, ObservableObject, CBCentralManagerDelegate, CBPerip
             return
         }
         
-        Logger.logger?.log("Disconnecting from peripheral: \(p.name ?? "unknown")")
-        
         if p.state == .connected || p.state == .connecting || p.state == .disconnecting {
+            manualDisconnect = true
+            Logger.logger?.log("Disconnecting from peripheral: \(p.name ?? "unknown")")
             central.cancelPeripheralConnection(p)
         } else if p.state == .disconnected {
             Logger.logger?.log("Peripheral is already disconnected")
             bleState = .disconnected
         }
-        self.peripheral = nil
         // rest will be handled in .didDisconnectPeripheral
     }
     
@@ -341,10 +343,12 @@ class BLEHandler : NSObject, ObservableObject, CBCentralManagerDelegate, CBPerip
     }
     
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, timestamp: CFAbsoluteTime, isReconnecting: Bool, error: (any Error)?) {
-        if isReconnecting {
+        if isReconnecting && !manualDisconnect {
+            bleState = .connecting
             Logger.logger?.log("Reconnecting to disconnected peripheral: \(peripheral.name ?? "unknown")")
         } else {
             Logger.logger?.log("Disconnected from peripheral: \(peripheral.name ?? "unknown")")
+            manualDisconnect = false
             bleState = .disconnected
             cleanupStreams()
             self.peripheral = nil
