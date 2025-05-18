@@ -16,7 +16,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "3898003C2DC0062000B06B5F"
-               BuildableName = "glimpse.app"
+               BuildableName = "Glimpse Glass.app"
                BlueprintName = "glimpse"
                ReferencedContainer = "container:glimpse.xcodeproj">
             </BuildableReference>
@@ -69,7 +69,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "3898003C2DC0062000B06B5F"
-            BuildableName = "glimpse.app"
+            BuildableName = "Glimpse Glass.app"
             BlueprintName = "glimpse"
             ReferencedContainer = "container:glimpse.xcodeproj">
          </BuildableReference>
@@ -86,7 +86,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "3898003C2DC0062000B06B5F"
-            BuildableName = "glimpse.app"
+            BuildableName = "Glimpse Glass.app"
             BlueprintName = "glimpse"
             ReferencedContainer = "container:glimpse.xcodeproj">
          </BuildableReference>
