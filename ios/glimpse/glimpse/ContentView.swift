@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct ImageView: View {
-    
+
     let image: UIImage?
-    
+
     var body: some View {
         VStack {
             if let img = image {
@@ -19,11 +19,11 @@ struct ImageView: View {
 }
 
 struct ContentView: View {
-    
+
     @StateObject private var ble = BLEHandler()
-    
+
     @State private var showingImage: Bool = false
-    
+
     private var statusButtonText: String {
         switch ble.bleState {
         case .connected: return "Disconnect"
@@ -33,7 +33,7 @@ struct ContentView: View {
         case .scanning: return "Scanning..."
         }
     }
-    
+
     private var statusButtonAction: () -> Void {
         switch ble.bleState {
         case .connected: return ble.manuallyDisconnect
@@ -43,12 +43,12 @@ struct ContentView: View {
         case .scanning: return {}
         }
     }
-    
+
     var body: some View {
         VStack {
-            
+
             Spacer()
-            
+
             Button(action: statusButtonAction) {
                 Text(statusButtonText)
                     .font(.system(size: 40, weight: .bold))
@@ -57,15 +57,15 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity)
                     .foregroundColor(.teal)
             }
-            
+
             Spacer()
         }
-        
+
         VStack {
-            
-            // Spacer()
-            
-            Button { showingImage = true } label: {
+
+            Button {
+                showingImage = true
+            } label: {
                 Text("Show Raw Image")
                     .font(.system(size: 15))
                     .padding(10)
@@ -73,7 +73,7 @@ struct ContentView: View {
             }
             .padding(.bottom, 30)
         }
-        
+
         .sheet(isPresented: $showingImage) {
             ImageView(image: ble.rawImage)
         }
@@ -83,5 +83,3 @@ struct ContentView: View {
 #Preview {
     ContentView()
 }
-
-
