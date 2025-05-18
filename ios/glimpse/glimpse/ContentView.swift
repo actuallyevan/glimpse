@@ -1,45 +1,82 @@
 import SwiftUI
 
-struct ContentView: View {
-    @StateObject private var ble = BLEManager()
-
-    @State private var statusMessage: String = "Press the button to convert text."
-    @State private var mp3Data: Data? = nil // To store the MP3 data if you want to use it
+struct ImageView: View {
     
-
-    // The text you want to convert
-    let textToSpeak = "Hello from SwiftUI. This will become an MP3."
+    let image: UIImage?
     
     var body: some View {
         VStack {
-            Text("BLE State: \(ble.bleStatusString)")
-                .font(.headline)
-                .padding(20)
-            if ble.bleState == .connected {
-                Text("Connected")
-            } else if (ble.bleState == .scanning) {
-                Text("Scanning for devices...")
-            } else {
-                Button("Connect") {
-                    // ble.initialConnection()
-                }
-            }
-            Button("Send Message") {
-                ble.sendData()
-            }
-            .padding(20)
-            Text("Received Message: \(ble.receivedMessage)")
-                .font(.headline)
-                .padding(20)
-            if let img = ble.receivedImage {
+            if let img = image {
                 Image(uiImage: img)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding()
+                    .padding(5)
+            } else {
+                Text("No image available")
             }
         }
-        .padding()
+    }
+}
+
+struct ContentView: View {
+    
+    @StateObject private var ble = BLEHandler()
+    
+    @State private var showingImage: Bool = false
+    
+    private var statusButtonText: String {
+        switch ble.bleState {
+        case .connected: return "Disconnect"
+        case .connecting: return "Connecting..."
+        case .disconnected: return "Connect"
+        case .idle: return "Waiting..."
+        case .scanning: return "Scanning..."
+        }
+    }
+    
+    private var statusButtonAction: () -> Void {
+        switch ble.bleState {
+        case .connected: return ble.manuallyDisconnect
+        case .connecting: return {}
+        case .disconnected: return ble.manuallyConnect
+        case .idle: return {}
+        case .scanning: return {}
+        }
+    }
+    
+    var body: some View {
+        VStack {
+            
+            Spacer()
+            
+            Button(action: statusButtonAction) {
+                Text(statusButtonText)
+                    .font(.system(size: 40, weight: .bold))
+                    .padding(.vertical, 20)
+                    .padding(.horizontal, 30)
+                    .frame(maxWidth: .infinity)
+                    .foregroundColor(.teal)
+            }
+            
+            Spacer()
+        }
+        
+        VStack {
+            
+            // Spacer()
+            
+            Button { showingImage = true } label: {
+                Text("Show Raw Image")
+                    .font(.system(size: 15))
+                    .padding(10)
+                    .foregroundColor(.teal)
+            }
+            .padding(.bottom, 30)
+        }
+        
+        .sheet(isPresented: $showingImage) {
+            ImageView(image: ble.rawImage)
+        }
     }
 }
 

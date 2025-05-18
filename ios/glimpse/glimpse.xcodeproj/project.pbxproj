@@ -24,7 +24,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		3898003D2DC0062000B06B5F /* glimpse.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = glimpse.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3898003D2DC0062000B06B5F /* Glimpse Glass.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Glimpse Glass.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		3898004A2DC0062100B06B5F /* glimpseTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = glimpseTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		389800542DC0062100B06B5F /* glimpseUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = glimpseUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -98,7 +98,7 @@
 		3898003E2DC0062000B06B5F /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				3898003D2DC0062000B06B5F /* glimpse.app */,
+				3898003D2DC0062000B06B5F /* Glimpse Glass.app */,
 				3898004A2DC0062100B06B5F /* glimpseTests.xctest */,
 				389800542DC0062100B06B5F /* glimpseUITests.xctest */,
 			);
@@ -127,7 +127,7 @@
 			packageProductDependencies = (
 			);
 			productName = glimpse;
-			productReference = 3898003D2DC0062000B06B5F /* glimpse.app */;
+			productReference = 3898003D2DC0062000B06B5F /* Glimpse Glass.app */;
 			productType = "com.apple.product-type.application";
 		};
 		389800492DC0062100B06B5F /* glimpseTests */ = {
@@ -430,7 +430,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "Evan-Robert.glimpse";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Glimpse Glass";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -462,7 +462,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "Evan-Robert.glimpse";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = "Glimpse Glass";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
