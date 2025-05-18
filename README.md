@@ -1,6 +1,6 @@
 This project allows an iPhone to communicate with an Seeed Studio XIAO ESP32S3 Sense over BLE to enable the ESP32S3 to play an audio description of images it captures.
 
-### Latency Considerations
+### General Considerations
  - ESP camera image resolution
  - Prompts for both API calls on iPhone
 
