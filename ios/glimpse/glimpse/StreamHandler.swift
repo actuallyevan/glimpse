@@ -153,7 +153,7 @@ extension BLEHandler: StreamDelegate {
 
         let imgBase64 = imageProcessor.processImage(
             image: image,
-            radians: -Float.pi / 2
+            radians: Float.pi
         )
         Logger.logger?.log("Image converted to base64, calling api")
 

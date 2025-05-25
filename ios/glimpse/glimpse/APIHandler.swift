@@ -56,10 +56,10 @@ class APIHandler {
 
     // Main parameters
     private var visionPrompt: String =
-        "You are seeing this for me. Concisely describe what is directly in front of me, and mention key objects to my left and right. Focus on object placement and distance. For example, 'A red mug is in front of you, slightly to your left. Your keys are to your right.' Be direct and brief."
+        "You are the eyes of a blind person. Concisely describe what you see, and mention the placement and distance of key objects. Be direct and brief."
     private var visionImageDetail: String = "auto"
     private var ttsPromptInstructions: String =
-        "Speak quickly, calmly, and clearly."
+        "Speak quickly and calmly."
     //
 
     private let visionAPIURL = URL(
@@ -119,7 +119,7 @@ class APIHandler {
             ]
         )
         let parameters = VisionAPIRequest(
-            model: "o4-mini",
+            model: "chatgpt-4o-latest",
             input: [visionInput]
         )
         request.httpBody = try? JSONEncoder().encode(parameters)

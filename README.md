@@ -3,7 +3,7 @@ This project allows an iPhone to communicate with a Seeed Studio XIAO ESP32S3 Se
 ### General Considerations
  - ESP camera image resolution
  - Prompts for both API calls on iPhone
- - Model(s) used (and reasoning effort)
+ - Model(s) used, reasoning effort, and image input detail level
 
 
 ### BLE Settings
