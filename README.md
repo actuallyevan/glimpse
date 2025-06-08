@@ -1,5 +1,15 @@
 This project allows an iPhone to communicate with a Seeed Studio XIAO ESP32S3 Sense over BLE to enable the ESP32S3 to play an audio description of images it captures.
 
+### How to Use
+Operation is straightforward assuming you have the app and the glasses module:
+ - Open the iOS app
+ - Turn on the glasses with the switch
+ - Click "Connect" in the app
+ - Press the button on the glasses
+ - Listen to the audio
+
+To upload the code to the ESP32S3, clone the repository, open the esp folder in PlatformIO, and click upload. The Swift code, which can be built in Xcode, is in the ios folder.
+
 ### General Considerations
  - ESP camera image resolution
  - Prompts for both API calls on iPhone
